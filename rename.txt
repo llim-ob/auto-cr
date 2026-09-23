@@ -1,0 +1,22 @@
+Request Details: For Reload 
+
+Feedid: {feed_id}
+Adapter: {adapter_id}
+
+DELETE FROM ecs_header WHERE fileid IN ({fileids});
+
+DELETE FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids});
+
+UPDATE carrier_file_workflow SET filename='{filename}', processdate = '', processstatus = '',is_export='' WHERE fileid IN ({fileids});
+commit;
+
+login to 10.200.1.105
+cd /comrec_ecs/ctl_file
+rm *.bad
+cd /comrec_ecs/
+--Delete bad files
+cd /comrec_ecs/
+python selector.py :8aimsprd :9aimsbatch :10aimsbatch :12
+
+--Once reloaded and in GOOD status, check the query results and send the screenshot in TW
+select * from ecs_header where fileid in ({fileids});

@@ -1,0 +1,21 @@
+# Project
+
+- COMREC
+
+# Teamwork
+
+- {teamwork_link}
+
+# Database (AIMSPRD, UNITED, etc.)
+
+- AIMSPRD
+
+# Schema (AGENCY, VUEUIG, etc.)
+
+- AGENCY
+
+# SQL
+
+```sql
+{the sql generated from python script}
+```

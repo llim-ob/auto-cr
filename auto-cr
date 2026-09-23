@@ -1,0 +1,11 @@
+#!/bin/bash
+# auto-cr - Drop a Teamwork link and create a GitHub issue
+# Usage: auto-cr <teamwork_link>
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+    echo "ERROR: .venv is missing. Create it with: python3 -m venv .venv" >&2
+    exit 1
+fi
+exec "$PYTHON" "$SCRIPT_DIR/agent_qwen.py" "$@"

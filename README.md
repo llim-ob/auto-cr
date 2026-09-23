@@ -1,375 +1,278 @@
 # auto-cr
 
-`auto-cr` converts a Teamwork task into a GitHub SQL-request issue.
+`auto-cr` converts a Teamwork task link into a GitHub issue containing the SQL and operational instructions for a COMREC request.
 
-The automation reads the Teamwork task, identifies the requested COMREC operation, renders the matching local reference template, and creates an issue in the configured GitHub repository.
+It reads the Teamwork task, determines whether the request is a reload, rename, or delete operation, fills the matching local template, and creates one issue in the configured GitHub repository.
 
-It does **not** execute SQL, connect to the database, run the generated shell commands, create a branch, commit files, or open a pull request.
+The script does not execute SQL, connect to a database, run shell commands, or create a pull request.
 
-## Quick Start
+## How To Use It
 
-From this directory:
+### 1. Install dependencies
+
+From the project directory:
 
 ```bash
 cd /Users/liamrhysslim/Codes/auto-cr
-```
-
-Create the virtual environment and install dependencies:
-
-```bash
 python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m playwright install chromium
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-Create `.env`:
+If `.venv` already exists, only the install command is needed.
+
+### 2. Configure credentials
+
+Create `.env` in the project directory:
 
 ```dotenv
-GITHUB_TOKEN=ghp_your_token
+# GitHub issue destination
+GITHUB_TOKEN=your_github_token
 GITHUB_OWNER=objectbrightph
 GITHUB_REPO=sql-requests
 GITHUB_LABEL=sql-request
 
-TEAMWORK_EMAIL=your_teamwork_email
-TEAMWORK_PASSWORD=your_teamwork_password
+# Teamwork authentication: use either API key or OAuth access token
+TW_API_KEY=your_teamwork_api_key
+# TW_ACCESS_TOKEN=your_teamwork_access_token
+
+# Optional Qwen task classification
+# QWEN_API_KEY=your_qwen_api_key
+# QWEN_API_BASE=https://gpu.ltcglobal.com/v1
+# QWEN_MODEL=qwen-mtp-35b
 ```
 
-Run the automation:
-
-```bash
-./auto-cr "https://objectbright.teamwork.com/app/tasks/27255838"
-```
-
-`./auto-cr` always uses this project's `.venv`. This avoids accidentally running the system Python or a different pyenv environment.
-
-Direct Python invocation is also supported:
-
-```bash
-.venv/bin/python agent_qwen.py \
-  "https://objectbright.teamwork.com/app/tasks/27255838"
-```
-
-The script name `agent_qwen.py` is historical. SQL is currently rendered from the local reference files; it does not call Qwen.
-
-## Configuration
+Required values:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GITHUB_TOKEN` | Yes | GitHub token with permission to create issues in the repository |
-| `GITHUB_OWNER` | No | GitHub owner; defaults to `objectbrightph` |
-| `GITHUB_REPO` | No | GitHub repository; defaults to `sql-requests` |
-| `GITHUB_LABEL` | No | Issue label; defaults to `sql-request` |
-| `TEAMWORK_EMAIL` | Yes for browser login | Teamwork account email |
-| `TEAMWORK_PASSWORD` | Yes for browser login | Teamwork account password |
+| `GITHUB_TOKEN` | Yes | Allows the script to create GitHub issues. |
+| `TW_API_KEY` or `TW_ACCESS_TOKEN` | Yes | Allows the script to read the Teamwork task. |
+| `GITHUB_OWNER` | No | GitHub owner. Defaults to `objectbrightph`. |
+| `GITHUB_REPO` | No | GitHub repository. Defaults to `sql-requests`. |
+| `GITHUB_LABEL` | No | Issue label. Defaults to `sql-request`. |
+| `QWEN_API_KEY` | No | Enables Qwen classification. Without it, local rules are used. |
 
-The Teamwork fetcher also accepts these aliases:
+Keep `.env` private. Never commit API keys or tokens.
 
-```dotenv
-TW_EMAIL=your_teamwork_email
-TW_PASSWORD=your_teamwork_password
-```
+### 3. Prepare the Teamwork task
 
-or:
+The Teamwork task title or description should include:
 
-```dotenv
-TW_USERNAME=your_teamwork_email
-TW_PASSWORD=your_teamwork_password
-```
+- Feed ID, for example `Feed ID: 396`
+- Adapter ID, for example `Adapter ID: 396`
+- File ID, for example `File ID: 2756788` or `blob for 2756788`
 
-Keep `.env` private. Do not commit tokens or passwords. Rotate any credential that has been exposed.
-
-## Automation Workflow
-
-```text
-Teamwork task URL
-        |
-        v
-Extract numeric task ID
-        |
-        v
-Open Teamwork task with Playwright
-        |
-        v
-Capture task API response and rendered task text
-        |
-        v
-Extract title, feed ID, adapter ID, file ID, and rename filenames
-        |
-        v
-Infer operation: reload, rename, or delete
-        |
-        +--> delete: ask for mode 1 or mode 2
-        |
-        v
-Render reload.txt, rename.txt, delete1.txt, or delete2.txt
-        |
-        v
-Render sql_request.txt as GitHub issue body
-        |
-        v
-POST one issue to GitHub
-```
-
-### 1. Read the Teamwork URL
-
-The URL must contain a numeric task ID:
-
-```text
-https://objectbright.teamwork.com/app/tasks/27255838
-```
-
-The numeric value `27255838` is passed to `fetch_task.py`.
-
-### 2. Fetch the task
-
-`fetch_task.py` opens the task page in a headless Chromium browser. If Teamwork redirects to login, it uses the credentials from `.env`.
-
-The task API response is preferred. Rendered page text is used as a fallback.
-
-The fetcher returns normalized JSON similar to:
-
-```json
-{
-  "task_id": "27255838",
-  "title": "Medical Mutual of OH Adapter ID 128 Feed ID 124 replace blob req by Zina 09222026",
-  "description": "Hello, Please replace the blob for 2779396 with the file attached.",
-  "feed_id": "124",
-  "adapter_id": "128",
-  "file_ids": ["2779396"],
-  "rename_from": null,
-  "rename_to": null,
-  "operation": "reload"
-}
-```
-
-To inspect task extraction without creating a GitHub issue:
-
-```bash
-.venv/bin/python fetch_task.py 27255838
-```
-
-### 3. Extract task fields
-
-The task title or description must provide:
-
-```text
-Feed ID: 396
-Adapter ID: 396
-File ID: 2756788
-```
-
-The extractor also supports these file-ID formats:
-
-```text
-File ID: 2756788
-FileID: 2756788
-File #2756788
-blob for 2756788
-blob for #2756788
-```
-
-Rename tasks must provide both filenames:
+For a rename request, include both filenames:
 
 ```text
 From: OLD_FILENAME
 To: NEW_FILENAME
 ```
 
-The process stops before GitHub issue creation when feed ID, adapter ID, file ID, title, or required rename destination is missing.
+The script also reads `feedId`, `adapterId`, and `fileIds` when those values are present in the Teamwork API response.
 
-### 4. Infer the operation
+### 4. Paste the Teamwork link into the command
 
-Operation detection follows these rules:
+Run `auto.py` with the Teamwork task URL:
 
-- Title containing `delete`, `deletion`, or `remove` -> `delete`
-- Title containing `rename`, `renamed`, or `change filename` -> `rename`
-- `replace blob` with both `From:` and `To:` filenames -> `rename`
-- Description containing a direct delete request -> `delete`
-- Description containing rename wording or a valid `From:`/`To:` pair -> `rename`
-- Otherwise -> `reload`
-
-`replace blob` without a filename change is treated as `reload`. For example:
-
-```text
-Please replace the blob for 2779396 with the file attached.
+```bash
+.venv/bin/python auto.py \
+  "https://objectbright.teamwork.com/app/tasks/27255838"
 ```
 
-### 5. Choose delete mode
+The URL must contain a numeric task ID in the `/tasks/<id>` path.
 
-Delete tasks require an interactive choice:
+For a delete request, the command pauses and asks which delete template to use:
 
 ```text
 Delete mode: choose 1 (delete1.txt) or 2 (delete2.txt):
 ```
 
-Choose:
+Enter `1` or `2`, then let the command finish.
 
-- `1` to render `delete1.txt`, which creates a new detail backup table.
-- `2` to render `delete2.txt`, which inserts into the existing detail backup table.
+### 5. Open the created GitHub issue
 
-No delete issue is created until a valid mode, `1` or `2`, is selected.
+When successful, the command prints the created issue URL:
 
-### 6. Render the SQL request
+```text
+Issue created: https://github.com/objectbrightph/sql-requests/issues/123
+```
 
-The selected reference file is loaded without changing its format:
+## Teamwork Link To GitHub Issue Flow
+
+```text
+Paste Teamwork task link into auto.py
+                 |
+                 v
+Extract numeric Teamwork task ID
+                 |
+                 v
+Authenticate with Teamwork API
+                 |
+                 v
+Fetch task title and description
+                 |
+                 v
+Extract feed ID, adapter ID, file IDs, and rename filenames
+                 |
+                 v
+Classify operation: reload, rename, or delete
+                 |
+                 +--> delete: ask for template mode 1 or 2
+                 |
+                 v
+Load and fill operation template from template/
+                 |
+                 v
+Insert rendered request into sql_request.txt
+                 |
+                 v
+Create GitHub issue with Teamwork title, link, SQL, and label
+                 |
+                 v
+Print GitHub issue URL
+```
+
+### 1. Parse the Teamwork link
+
+`auto.py` extracts the numeric task ID from the link. It rejects links that do not contain a task ID.
+
+### 2. Fetch the task
+
+`tw_auth.py` authenticates with Teamwork and fetches:
+
+```text
+GET https://objectbright.teamwork.com/projects/api/v3/tasks/<task_id>.json
+```
+
+The script supports Teamwork API-key authentication with `TW_API_KEY` and OAuth bearer authentication with `TW_ACCESS_TOKEN`.
+
+### 3. Extract task data
+
+The title and description are normalized, then the script extracts:
+
+| Value | Supported examples |
+| --- | --- |
+| Feed ID | `Feed ID: 396` |
+| Adapter ID | `Adapter ID: 396` |
+| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `blob for 2756788` |
+| Rename source | `From: OLD_FILENAME` |
+| Rename destination | `To: NEW_FILENAME` |
+
+The script stops before creating the issue if feed ID, adapter ID, file ID, or title is missing. Rename operations also require a destination filename.
+
+### 4. Classify the operation
+
+If `QWEN_API_KEY` is configured, Qwen classifies the task. Qwen must return one of:
+
+- `reload` for replacing or reprocessing a blob
+- `rename` for changing a filename
+- `delete` for removing data
+
+Without Qwen, local deterministic rules classify the title and description. Unmatched requests default to `reload`.
+
+Qwen does not generate SQL. It only selects the operation and, for a rename, returns the destination filename.
+
+### 5. Render the request template
+
+Operation templates are stored in `template/`:
 
 | Operation | Template |
 | --- | --- |
-| Reload | `reload.txt` |
-| Rename | `rename.txt` |
-| Delete mode 1 | `delete1.txt` |
-| Delete mode 2 | `delete2.txt` |
+| Reload | `template/reload.txt` |
+| Rename | `template/rename.txt` |
+| Delete mode 1 | `template/delete1.txt` |
+| Delete mode 2 | `template/delete2.txt` |
 
-Only these placeholders are replaced:
+The selected template is filled with:
 
-```text
-{feed_id}
-{adapter_id}
-{fileids}
-{filename}
-```
+| Placeholder | Value |
+| --- | --- |
+| `{feed_id}` | Extracted Teamwork feed ID |
+| `{adapter_id}` | Extracted Teamwork adapter ID |
+| `{fileids}` | File IDs joined with commas |
+| `{filename}` | Rename destination filename |
 
-The reference template's comments, SQL statements, `commit;`, shell commands, and verification query are preserved.
+The templates contain the SQL and any required shell commands or verification queries. Those instructions are included as text in the GitHub issue; they are not executed by `auto.py`.
 
-### 7. Build the GitHub issue
+### 6. Build the GitHub issue body
 
-The issue title is the exact Teamwork task title.
+`sql_request.txt` is the outer GitHub issue template. It remains in the project root and contains the project, Teamwork, database, schema, and SQL sections.
 
-The body is rendered from `sql_request.txt`:
+The script replaces:
 
-~~~text
-# Project
+- `{teamwork_link}` with the original Teamwork URL
+- `{the sql generated from python script}` with the selected, filled operation template
 
-- COMREC
+The GitHub issue title is the exact Teamwork task title.
 
-# Teamwork
-
-- {teamwork_link}
-
-# Database (AIMSPRD, UNITED, etc.)
-
-- AIMSPRD
-
-# Schema (AGENCY, VUEUIG, etc.)
-
-- AGENCY
-
-# SQL
-
-```sql
-{the sql generated from python script}
-```
-~~~
-
-The automation replaces `{teamwork_link}` with the original Teamwork URL and `{the sql generated from python script}` with the rendered reference request.
-
-### 8. Create the issue
+### 7. Create the issue
 
 The script sends one request to:
 
 ```text
-POST https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/issues
+POST https://api.github.com/repos/<GITHUB_OWNER>/<GITHUB_REPO>/issues
 ```
 
-The payload contains:
+The request includes:
 
 ```json
 {
-  "title": "Exact Teamwork task title",
-  "body": "Rendered sql_request.txt body",
+  "title": "Teamwork task title",
+  "body": "Rendered sql_request.txt content",
   "labels": ["sql-request"]
 }
 ```
 
-The resulting GitHub issue URL is printed to the terminal.
+The label comes from `GITHUB_LABEL`.
 
-## Direct SQL Generators
+## OAuth Setup
 
-These commands generate output locally without reading Teamwork or creating a GitHub issue:
+API-key authentication is simplest. If OAuth is required:
 
-```bash
-.venv/bin/python reload.py \
-  --feed-id 396 \
-  --adapter-id 396 \
-  --fileids 2756788
-```
-
-```bash
-.venv/bin/python rename.py \
-  --feed-id 396 \
-  --adapter-id 396 \
-  --fileids 2756788 \
-  --filename NEW_NAME
-```
-
-```bash
-.venv/bin/python delete.py \
-  --feed-id 396 \
-  --adapter-id 396 \
-  --fileids 2756788 \
-  --mode create
-```
-
-These commands print SQL and operational instructions. They do not execute them.
+1. Configure the Teamwork app client ID, client secret, and registered redirect URI.
+2. Complete the Teamwork authorization flow and obtain the one-time authorization code.
+3. Set `TW_CLIENT_ID`, `TW_CLIENT_SECRET`, `TW_AUTH_CODE`, and `TW_REDIRECT_URI` in `.env`.
+4. Run `tw_auth.py` once to exchange the code for an access token.
+5. Store the returned token as `TW_ACCESS_TOKEN` and remove `TW_AUTH_CODE`.
 
 ## Troubleshooting
 
-### `ModuleNotFoundError: No module named ...`
+### Teamwork authentication error
 
-Use the project interpreter:
-
-```bash
-source .venv/bin/activate
-which python
-```
-
-Expected path:
-
-```text
-/Users/liamrhysslim/Codes/auto-cr/.venv/bin/python
-```
-
-Or bypass shell activation:
-
-```bash
-./auto-cr "https://objectbright.teamwork.com/app/tasks/27255838"
-```
-
-### Teamwork login error
-
-Set credentials in `.env`:
+Confirm that `.env` contains either:
 
 ```dotenv
-TEAMWORK_EMAIL=your_teamwork_email
-TEAMWORK_PASSWORD=your_teamwork_password
+TW_API_KEY=your_teamwork_api_key
 ```
 
-Then verify extraction:
+or:
 
-```bash
-.venv/bin/python fetch_task.py 27255838
+```dotenv
+TW_ACCESS_TOKEN=your_teamwork_access_token
 ```
 
-### Missing required file ID
+### Missing task data
 
-Inspect the task output:
+Add feed, adapter, and file IDs to the Teamwork title or description. Rename requests also need a `To:` filename.
 
-```bash
-.venv/bin/python fetch_task.py 27255838
-```
+### Delete prompt does not work
 
-Make sure the Teamwork task description contains a supported file-ID format such as `File ID: 2756788` or `blob for 2756788`.
-
-### Delete task in a non-interactive shell
-
-Delete mode requires input. Run the command from an interactive terminal and enter `1` or `2` when prompted.
+Delete mode is interactive. Run the command from a terminal and enter `1` or `2` when prompted.
 
 ### GitHub API error
 
-Check:
+Check that:
 
-- `GITHUB_TOKEN` is present and valid.
-- The token can create issues in `GITHUB_OWNER/GITHUB_REPO`.
-- The repository exists.
-- The configured label exists if the repository requires existing labels.
+- `GITHUB_TOKEN` is valid and can create issues.
+- `GITHUB_OWNER` and `GITHUB_REPO` identify the correct repository.
+- The configured `GITHUB_LABEL` is available in that repository.
+
+### Python dependency error
+
+Use the project virtual environment directly:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python auto.py "<teamwork-task-link>"
+```

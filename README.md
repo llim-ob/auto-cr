@@ -80,6 +80,14 @@ Run `auto.py` with the Teamwork task URL:
   "https://objectbright.teamwork.com/app/tasks/27255838"
 ```
 
+You can also use the `a` launcher from the project directory:
+
+```bash
+./a "https://objectbright.teamwork.com/app/tasks/27255838"
+```
+
+Both commands run the same Teamwork-to-GitHub process.
+
 The URL must contain a numeric task ID in the `/tasks/<id>` path.
 
 For a delete request, the command pauses and asks which delete template to use:

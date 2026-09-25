@@ -37,8 +37,8 @@ TW_API_KEY=your_teamwork_api_key
 
 # Optional Qwen task classification
 # QWEN_API_KEY=your_qwen_api_key
-# QWEN_API_BASE=https://gpu.ltcglobal.com/v1
-# QWEN_MODEL=qwen-mtp-35b
+# QWEN_API_BASE=
+# QWEN_MODEL=
 ```
 
 Required values:
@@ -106,6 +106,38 @@ You can also use the `a` launcher from the project directory:
 ./a "https://objectbright.teamwork.com/app/tasks/27255838"
 ```
 
+Force an operation with a flag when the request wording is already known:
+
+```bash
+.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --reload
+.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --delete
+.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob
+```
+
+`--replace-blob` uses the existing reload template. `--rename` is also
+available for an explicit filename-change request. The equivalent generic form
+is `--operation reload`, `--operation delete`, `--operation rename`, or
+`--operation replace-blob`.
+
+If no operation flag is provided, the script fetches and analyzes the Teamwork
+task using Qwen when configured, or local rules otherwise:
+
+```bash
+.venv/bin/python auto.py \
+  "https://objectbright.teamwork.com/app/tasks/27261684"
+```
+
+The same flags can be passed through `paste-tw` or `./a` when launching from a
+terminal. A dropped `.webloc` contains only the link, so it follows the
+analysis path unless an operation flag is added to the launcher command.
+
+When using the interactive prompt, enter the link and optional flag as separate
+space-delimited arguments:
+
+```text
+Paste Teamwork task link (Ctrl-D to quit): https://objectbright.teamwork.com/app/tasks/27261684 --reload
+```
+
 Both commands run the same Teamwork-to-GitHub process.
 
 The URL must contain a numeric task ID in the `/tasks/<id>` path.
@@ -144,7 +176,7 @@ Fetch task title and description
 Extract feed ID, adapter ID, file IDs, and rename filenames
                  |
                  v
-Classify operation: reload, rename, or delete
+Use explicit operation flag, or analyze task: reload, rename, or delete
                  |
                  +--> delete: ask for template mode 1 or 2
                  |
@@ -183,13 +215,18 @@ The title and description are normalized, then the script extracts:
 | --- | --- |
 | Feed ID | `Feed ID: 396` |
 | Adapter ID | `Adapter ID: 396` |
-| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `2780005 - 09/23/2026` |
+| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026` |
 | Rename source | `From: OLD_FILENAME` |
 | Rename destination | `To: NEW_FILENAME` |
 
 The script stops before creating the issue if feed ID, adapter ID, file ID, or title is missing. Rename operations also require a destination filename.
 
 ### 4. Classify the operation
+
+An explicit operation flag takes priority over task analysis. Supported flags
+are `--reload`, `--delete`, `--rename`, and `--replace-blob`; the last one uses
+the reload template for replacing a blob. If no flag is supplied, the script
+analyzes the fetched Teamwork title and description.
 
 If `QWEN_API_KEY` is configured, Qwen classifies the task. Qwen must return one of:
 
@@ -220,6 +257,9 @@ The selected template is filled with:
 | `{adapter_id}` | Extracted Teamwork adapter ID |
 | `{fileids}` | File IDs joined with commas |
 | `{filename}` | Rename destination filename |
+
+Plain reload requests use `Request Details: For Reload`. `--replace-blob`
+requests use `Request Details: For Reload / BLOB Update`.
 
 The templates contain the SQL and any required shell commands or verification queries. Those instructions are included as text in the GitHub issue; they are not executed by `auto.py`.
 

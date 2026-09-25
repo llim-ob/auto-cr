@@ -1,6 +1,6 @@
 #!/bin/bash
 # auto-cr - Drop a Teamwork link and create a GitHub issue
-# Usage: auto-cr <teamwork_link>
+# Usage: auto-cr [operation flag] <teamwork_link>
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON="$SCRIPT_DIR/.venv/bin/python"
@@ -9,14 +9,28 @@ if [ ! -x "$PYTHON" ]; then
     exit 1
 fi
 
-# Finder may pass a dragged Teamwork link as a .webloc file.
-if [ "$#" -eq 1 ] && [ -f "$1" ] && [ "${1##*.}" = "webloc" ]; then
-    TEAMWORK_LINK="$(plutil -extract URL raw -o - "$1" 2>/dev/null)"
+# Finder may pass a dragged Teamwork link as a .webloc file. Keep an optional
+# operation flag before the dropped file path.
+WEBLOC_ARG=""
+if [ "$#" -ge 1 ] && [ -f "$1" ] && [ "${1##*.}" = "webloc" ]; then
+    WEBLOC_ARG="$1"
+elif [ "$#" -ge 2 ] && [ -f "$2" ] && [ "${2##*.}" = "webloc" ]; then
+    WEBLOC_ARG="$2"
+fi
+
+if [ -n "$WEBLOC_ARG" ]; then
+    TEAMWORK_LINK="$(plutil -extract URL raw -o - "$WEBLOC_ARG" 2>/dev/null)"
     if [ -z "$TEAMWORK_LINK" ]; then
-        echo "ERROR: Could not read the URL from $1" >&2
+        echo "ERROR: Could not read the URL from $WEBLOC_ARG" >&2
         exit 1
     fi
-    set -- "$TEAMWORK_LINK"
+    if [ "$#" -eq 2 ] && [ "$1" = "$WEBLOC_ARG" ]; then
+        set -- "$TEAMWORK_LINK" "$2"
+    elif [ "$#" -eq 2 ]; then
+        set -- "$1" "$TEAMWORK_LINK"
+    else
+        set -- "$TEAMWORK_LINK"
+    fi
 fi
 
 # Double-clicking the launcher keeps the Terminal session open for more tasks.
@@ -31,7 +45,8 @@ if [ "$#" -eq 0 ]; then
             echo "ERROR: A Teamwork task link is required." >&2
             continue
         fi
-        "$PYTHON" "$SCRIPT_DIR/auto.py" "$TEAMWORK_LINK"
+        read -r -a TASK_ARGS <<< "$TEAMWORK_LINK"
+        "$PYTHON" "$SCRIPT_DIR/auto.py" "${TASK_ARGS[@]}"
         printf "\n"
     done
 fi

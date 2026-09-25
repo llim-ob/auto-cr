@@ -81,6 +81,9 @@ def extract_task(task_id: str, payload: dict) -> dict:
     file_ids.extend(
         re.findall(r"\bblob(?:\s+for)?\s*[:#-]?\s*(\d+)\b", source_text, re.IGNORECASE)
     )
+    file_ids.extend(
+        re.findall(r"\bfor\s+(\d+)\b", source_text, re.IGNORECASE)
+    )
 
     from_match = re.search(r"From\s*:\s*[\"']?([\w.-]+)", source_text, re.IGNORECASE)
     to_match = re.search(r"To\s*:\s*[\"']?([\w.-]+)", source_text, re.IGNORECASE)
@@ -134,13 +137,31 @@ def analyze_task_hardcoded(task: dict) -> dict:
     return {
         "operation": operation,
         "rename_to": task["rename_to"] if operation == "rename" else "",
+        "request_details": "For Reload" if operation == "reload" else "",
         "rationale": "Matched local COMREC operation rules.",
         "analyzer": "hardcoded",
     }
 
 
-def analyze_task(task: dict) -> dict:
-    """Use Qwen when configured; otherwise use local deterministic rules."""
+def analyze_task(task: dict, operation: str | None = None) -> dict:
+    """Select an explicit operation or analyze the Teamwork task."""
+    if operation:
+        return {
+            "operation": "reload" if operation == "replace-blob" else operation,
+            "rename_to": task["rename_to"] if operation == "rename" else "",
+            "request_details": (
+                "For Reload / BLOB Update"
+                if operation == "replace-blob"
+                else "For Reload" if operation == "reload" else ""
+            ),
+            "rationale": (
+                "Explicit operation flag selected "
+                f"{operation.replace('-', ' ')}."
+            ),
+            "analyzer": "explicit flag",
+        }
+
+    # Fall back to configured model analysis, then local deterministic rules.
     if not QWEN_API_KEY:
         return analyze_task_hardcoded(task)
 
@@ -189,6 +210,7 @@ def analyze_task(task: dict) -> dict:
     return {
         "operation": operation,
         "rename_to": rename_to,
+        "request_details": "For Reload" if operation == "reload" else "",
         "rationale": str(result.get("rationale") or ""),
         "analyzer": "qwen",
     }
@@ -232,6 +254,7 @@ def render_reference_template(task: dict) -> str:
         "{adapter_id}": task["adapter_id"],
         "{fileids}": ",".join(task["file_ids"]),
         "{filename}": task["rename_to"],
+        "{request_details}": task.get("request_details", "For Reload"),
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
@@ -285,12 +308,46 @@ def create_github_issue(task: dict, request_text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a GitHub issue from a Teamwork COMREC task")
     parser.add_argument("teamwork_link", help="Teamwork task URL")
+    operation_group = parser.add_mutually_exclusive_group()
+    operation_group.add_argument(
+        "--operation",
+        choices=("reload", "delete", "rename", "replace-blob"),
+        help="Use this operation instead of analyzing the Teamwork task",
+    )
+    operation_group.add_argument(
+        "--reload",
+        dest="operation",
+        action="store_const",
+        const="reload",
+        help="Force reload operation",
+    )
+    operation_group.add_argument(
+        "--delete",
+        dest="operation",
+        action="store_const",
+        const="delete",
+        help="Force delete operation",
+    )
+    operation_group.add_argument(
+        "--rename",
+        dest="operation",
+        action="store_const",
+        const="rename",
+        help="Force rename operation",
+    )
+    operation_group.add_argument(
+        "--replace-blob",
+        dest="operation",
+        action="store_const",
+        const="replace-blob",
+        help="Force replace-blob operation using the reload template",
+    )
     args = parser.parse_args()
 
     try:
         task = {**parse_teamwork_link(args.teamwork_link)}
         task.update(fetch_task(task["task_id"]))
-        analysis = analyze_task(task)
+        analysis = analyze_task(task, args.operation)
         task = validate_task(task, analysis)
         request_text = render_reference_template(task)
         print(f"Operation: {task['operation']}")

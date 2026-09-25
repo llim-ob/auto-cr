@@ -1,4 +1,4 @@
-Request Details: For Reload 
+Request Details: {request_details}
 
 Feedid: {feed_id}
 Adapter: {adapter_id}

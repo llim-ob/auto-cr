@@ -60,7 +60,7 @@ The Teamwork task title or description should include:
 
 - Feed ID, for example `Feed ID: 396`
 - Adapter ID, for example `Adapter ID: 396`
-- File ID, for example `File ID: 2756788` or `blob for 2756788`
+- File ID, for example `File ID: 2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, or a line such as `2780005 - 09/23/2026`
 
 For a rename request, include both filenames:
 
@@ -71,7 +71,27 @@ To: NEW_FILENAME
 
 The script also reads `feedId`, `adapterId`, and `fileIds` when those values are present in the Teamwork API response.
 
-### 4. Paste the Teamwork link into the command
+### 4. Submit the Teamwork link
+
+From Finder, drag the Teamwork task link onto the executable `a` file inside
+the `auto-cr` folder. macOS may pass the dropped link as a `.webloc` file;
+the launcher reads its URL automatically.
+
+You can also double-click `a`, then paste the Teamwork link when prompted. After
+each process finishes, the launcher prompts for another link in the same
+Terminal session:
+
+```text
+Paste Teamwork task link (Ctrl-D to quit): https://objectbright.teamwork.com/app/tasks/27255838
+Issue created: https://github.com/objectbrightph/sql-requests/issues/123
+
+Paste Teamwork task link (Ctrl-D to quit):
+```
+
+Press `Ctrl-D` at the prompt to close the session. Command-line launches with
+an explicit URL still run once and exit.
+
+Command-line usage remains supported:
 
 Run `auto.py` with the Teamwork task URL:
 
@@ -163,7 +183,7 @@ The title and description are normalized, then the script extracts:
 | --- | --- |
 | Feed ID | `Feed ID: 396` |
 | Adapter ID | `Adapter ID: 396` |
-| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `blob for 2756788` |
+| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `2780005 - 09/23/2026` |
 | Rename source | `From: OLD_FILENAME` |
 | Rename destination | `To: NEW_FILENAME` |
 

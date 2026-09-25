@@ -1,0 +1,39 @@
+#!/bin/bash
+# auto-cr - Drop a Teamwork link and create a GitHub issue
+# Usage: auto-cr <teamwork_link>
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+    echo "ERROR: .venv is missing. Create it with: python3 -m venv .venv" >&2
+    exit 1
+fi
+
+# Finder may pass a dragged Teamwork link as a .webloc file.
+if [ "$#" -eq 1 ] && [ -f "$1" ] && [ "${1##*.}" = "webloc" ]; then
+    TEAMWORK_LINK="$(plutil -extract URL raw -o - "$1" 2>/dev/null)"
+    if [ -z "$TEAMWORK_LINK" ]; then
+        echo "ERROR: Could not read the URL from $1" >&2
+        exit 1
+    fi
+    set -- "$TEAMWORK_LINK"
+fi
+
+# Double-clicking the launcher keeps the Terminal session open for more tasks.
+if [ "$#" -eq 0 ]; then
+    while true; do
+        printf "Paste Teamwork task link (Ctrl-D to quit): "
+        if ! IFS= read -r TEAMWORK_LINK; then
+            printf "\n"
+            exit 0
+        fi
+        if [ -z "$TEAMWORK_LINK" ]; then
+            echo "ERROR: A Teamwork task link is required." >&2
+            continue
+        fi
+        "$PYTHON" "$SCRIPT_DIR/auto.py" "$TEAMWORK_LINK"
+        printf "\n"
+    done
+fi
+
+exec "$PYTHON" "$SCRIPT_DIR/auto.py" "$@"

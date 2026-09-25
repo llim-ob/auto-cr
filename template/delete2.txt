@@ -4,7 +4,7 @@ Feedid: {feed_id}
 Adapter: {adapter_id}
 
 --insert the data for backup to existing table
-INSERT INTO ecs_detail_type{adapter_id}_deleted (SELECT * FROM _detail_type WHERE fileid IN ({fileids}));
+INSERT INTO ecs_detail_type{adapter_id}_deleted (SELECT * FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids}));
 
 --insert the data in ecs_header_deleted for backup
 INSERT INTO ecs_header_deleted (SELECT * FROM ecs_header WHERE fileid IN ({fileids}));

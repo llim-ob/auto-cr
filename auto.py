@@ -70,6 +70,15 @@ def extract_task(task_id: str, payload: dict) -> dict:
         re.findall(r"(?:File\s*ID|FileID|File\s*#)\s*[:#-]?\s*(\d+)", source_text, re.IGNORECASE)
     )
     file_ids.extend(
+        re.findall(r"\bFile\s+(\d+)\b", source_text, re.IGNORECASE)
+    )
+    file_ids.extend(
+        re.findall(
+            r"\b(\d+)\s*-\s*\d{1,2}/\d{1,2}/\d{4}\b",
+            source_text,
+        )
+    )
+    file_ids.extend(
         re.findall(r"\bblob(?:\s+for)?\s*[:#-]?\s*(\d+)\b", source_text, re.IGNORECASE)
     )
 

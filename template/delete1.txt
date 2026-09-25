@@ -4,7 +4,7 @@ Feedid: {feed_id}
 Adapter: {adapter_id}
 
 --create a new table for detail table backup and insert the data for backup
-CREATE TABLE ecs_detail_type{adapter_id}_deleted AS (SELECT * FROM _detail_type WHERE fileid IN ({fileids}));
+CREATE TABLE ecs_detail_type{adapter_id}_deleted AS (SELECT * FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids}));
 
 --insert the data in ecs_header_deleted for backup
 INSERT INTO ecs_header_deleted (SELECT * FROM ecs_header WHERE fileid IN ({fileids}));

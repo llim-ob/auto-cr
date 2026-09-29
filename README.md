@@ -4,7 +4,9 @@
 
 It reads the Teamwork task, determines whether the request is a reload, rename, or delete operation, fills the matching local template, and creates one issue in the configured GitHub repository.
 
-The script does not execute SQL, connect to a database, run shell commands, or create a pull request.
+The script does not execute SQL, run shell commands, or create a pull request. For rename requests,
+it performs one read-only Oracle `SELECT` to determine the existing file type before rendering the
+GitHub issue.
 
 ## How To Use It
 
@@ -39,6 +41,16 @@ TW_API_KEY=your_teamwork_api_key
 # QWEN_API_KEY=your_qwen_api_key
 # QWEN_API_BASE=
 # QWEN_MODEL=
+
+# Read-only Oracle filename lookup for rename requests
+DB_CONNECTION=oracle
+DB_DATABASE=AIMSPRD
+DB_HOST=TNS-aimsprd.ltcglobal.com
+DB_PASSWORD=your_database_password
+DB_PORT=1521
+DB_USERNAME=agency
+# Required for the older AIMSPRD server; use the directory containing libclntsh.dylib.
+DB_ORACLE_CLIENT_LIB=/path/to/instantclient
 ```
 
 Required values:
@@ -51,6 +63,13 @@ Required values:
 | `GITHUB_REPO` | No | GitHub repository. Defaults to `sql-requests`. |
 | `GITHUB_LABEL` | No | Issue label. Defaults to `sql-request`. |
 | `QWEN_API_KEY` | No | Enables Qwen classification. Without it, local rules are used. |
+| `DB_CONNECTION` | Rename only | Must be `oracle`. |
+| `DB_DATABASE` | Rename only | Oracle service name, such as `AIMSPRD`. |
+| `DB_HOST` | Rename only | Oracle host/TNS host. |
+| `DB_PASSWORD` | Rename only | Oracle read-only lookup password. |
+| `DB_PORT` | Rename only | Oracle listener port, normally `1521`. |
+| `DB_USERNAME` | Rename only | Oracle lookup username. |
+| `DB_ORACLE_CLIENT_LIB` | Rename only | Directory containing the Oracle Instant Client libraries, such as `libclntsh.dylib`. Required for the older AIMSPRD server. |
 
 Keep `.env` private. Never commit API keys or tokens.
 
@@ -68,6 +87,32 @@ For a rename request, include both filenames:
 From: OLD_FILENAME
 To: NEW_FILENAME
 ```
+
+The description can also use natural-language filename changes:
+
+```text
+Update filename from OLD_FILENAME to NEW_FILENAME
+```
+
+The phrases `update file name`, `update filename`, `from OLD_FILENAME to NEW_FILENAME`,
+and their equivalent title forms trigger rename classification. The script looks up the existing
+filename in `carrier_file_workflow` using each extracted file ID, reads its `filename` column,
+and appends/replaces that extension on the requested destination, for example `NEW_FILENAME.xlsx`.
+The database lookup uses only `SELECT filename ... WHERE fileid = :fileid`; it does not update,
+delete, commit, or otherwise modify the production database.
+
+### Oracle Instant Client requirement
+
+The AIMSPRD Oracle server is an older version that cannot be accessed by
+`python-oracledb` Thin mode. Install the Oracle Instant Client for macOS, then set
+the directory containing `libclntsh.dylib` in `.env`:
+
+```dotenv
+DB_ORACLE_CLIENT_LIB=/path/to/instantclient
+```
+
+The script initializes `python-oracledb` Thick mode before the read-only lookup.
+It stops with a configuration error if the client libraries cannot be loaded.
 
 The script also reads `feedId`, `adapterId`, and `fileIds` when those values are present in the Teamwork API response.
 
@@ -217,9 +262,9 @@ The title and description are normalized, then the script extracts:
 | Adapter ID | `Adapter ID: 396` |
 | File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026` |
 | Rename source | `From: OLD_FILENAME` |
-| Rename destination | `To: NEW_FILENAME` |
+| Rename destination | `To: NEW_FILENAME`, or `from OLD_FILENAME to NEW_FILENAME` |
 
-The script stops before creating the issue if feed ID, adapter ID, file ID, or title is missing. Rename operations also require a destination filename.
+The script stops before creating the issue if feed ID, adapter ID, file ID, or title is missing. Rename operations also require a destination filename and the Oracle read-only filename lookup settings.
 
 ### 4. Classify the operation
 
@@ -256,7 +301,7 @@ The selected template is filled with:
 | `{feed_id}` | Extracted Teamwork feed ID |
 | `{adapter_id}` | Extracted Teamwork adapter ID |
 | `{fileids}` | File IDs joined with commas |
-| `{filename}` | Rename destination filename |
+| `{filename}` | Rename destination filename with the file type from Oracle |
 
 Plain reload requests use `Request Details: For Reload`. `--replace-blob`
 requests use `Request Details: For Reload / BLOB Update`.

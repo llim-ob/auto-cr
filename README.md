@@ -118,11 +118,11 @@ The script also reads `feedId`, `adapterId`, and `fileIds` when those values are
 
 ### 4. Submit the Teamwork link
 
-From Finder, drag the Teamwork task link onto the executable `a` file inside
+From Finder, drag the Teamwork task link onto the executable `paste-tw` file inside
 the `auto-cr` folder. macOS may pass the dropped link as a `.webloc` file;
 the launcher reads its URL automatically.
 
-You can also double-click `a`, then paste the Teamwork link when prompted. After
+You can also double-click `paste-tw`, then paste the Teamwork link when prompted. After
 each process finishes, the launcher prompts for another link in the same
 Terminal session:
 

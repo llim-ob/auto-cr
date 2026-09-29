@@ -64,10 +64,10 @@ Required values:
 | `GITHUB_LABEL` | No | Issue label. Defaults to `sql-request`. |
 | `QWEN_API_KEY` | No | Enables Qwen classification. Without it, local rules are used. |
 | `DB_CONNECTION` | Rename only | Must be `oracle`. |
-| `DB_DATABASE` | Rename only | Oracle service name, such as `AIMSPRD`. |
-| `DB_HOST` | Rename only | Oracle host/TNS host. |
+| `DB_DATABASE` | Rename only | Oracle service name, such as `database`. |
+| `DB_HOST` | Rename only | host. |
 | `DB_PASSWORD` | Rename only | Oracle read-only lookup password. |
-| `DB_PORT` | Rename only | Oracle listener port, normally `1521`. |
+| `DB_PORT` | Rename only | Oracle listener port, normally port. |
 | `DB_USERNAME` | Rename only | Oracle lookup username. |
 | `DB_ORACLE_CLIENT_LIB` | Rename only | Directory containing the Oracle Instant Client libraries, such as `libclntsh.dylib`. Required for the older AIMSPRD server. |
 

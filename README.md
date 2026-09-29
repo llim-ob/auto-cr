@@ -44,11 +44,11 @@ TW_API_KEY=your_teamwork_api_key
 
 # Read-only Oracle filename lookup for rename requests
 DB_CONNECTION=oracle
-DB_DATABASE=AIMSPRD
-DB_HOST=TNS-aimsprd.ltcglobal.com
-DB_PASSWORD=your_database_password
-DB_PORT=1521
-DB_USERNAME=agency
+DB_DATABASE=database
+DB_HOST=dbhost
+DB_PASSWORD=dbpassword
+DB_PORT=dbport
+DB_USERNAME=dbuser
 # Required for the older AIMSPRD server; use the directory containing libclntsh.dylib.
 DB_ORACLE_CLIENT_LIB=/path/to/instantclient
 ```

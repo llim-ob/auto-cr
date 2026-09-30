@@ -2,7 +2,7 @@
 
 `auto-cr` converts a Teamwork task link into a GitHub issue containing the SQL and operational instructions for a COMREC request.
 
-It reads the Teamwork task, determines whether the request is a reload, rename, or delete operation, fills the matching local template, and creates one issue in the configured GitHub repository.
+It reads the Teamwork task, determines whether the request is a reload, replace-blob, rename, or delete operation, fills the matching local template, adds the appropriate tags to the Teamwork task, and creates one issue in the configured GitHub repository.
 
 The script does not execute SQL, run shell commands, or create a pull request. For rename requests,
 it performs one read-only Oracle `SELECT` to determine the existing file type before rendering the
@@ -58,7 +58,7 @@ Required values:
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | Yes | Allows the script to create GitHub issues. |
-| `TW_API_KEY` or `TW_ACCESS_TOKEN` | Yes | Allows the script to read the Teamwork task. |
+| `TW_API_KEY` or `TW_ACCESS_TOKEN` | Yes | Allows the script to read and tag the Teamwork task. |
 | `GITHUB_OWNER` | No | GitHub owner. Defaults to `objectbrightph`. |
 | `GITHUB_REPO` | No | GitHub repository. Defaults to `sql-requests`. |
 | `GITHUB_LABEL` | No | Issue label. Defaults to `sql-request`. |
@@ -176,6 +176,12 @@ The same flags can be passed through `paste-tw` or `./a` when launching from a
 terminal. A dropped `.webloc` contains only the link, so it follows the
 analysis path unless an operation flag is added to the launcher command.
 
+For reload, replace-blob, delete, and rename requests, the script adds the
+`SQL Request` tag to the Teamwork task. Replace-blob requests (selected with
+`--replace-blob` or identified from `replace blob` wording) also receive the
+`BLOB Update` tag. Existing Teamwork tags are preserved. Tagging happens before
+the GitHub issue is created.
+
 When using the interactive prompt, enter the link and optional flag as separate
 space-delimited arguments:
 
@@ -221,9 +227,12 @@ Fetch task title and description
 Extract feed ID, adapter ID, file IDs, and rename filenames
                  |
                  v
-Use explicit operation flag, or analyze task: reload, rename, or delete
+Use explicit operation flag, or analyze task: reload, replace-blob, rename, or delete
                  |
                  +--> delete: ask for template mode 1 or 2
+                 |
+                 v
+Add Teamwork tags: SQL Request, and BLOB Update for replace-blob
                  |
                  v
 Load and fill operation template from template/
@@ -347,6 +356,15 @@ The request includes:
 ```
 
 The label comes from `GITHUB_LABEL`.
+
+Before creating the issue, the script adds Teamwork tags through:
+
+```text
+PUT https://objectbright.teamwork.com/tasks/<task_id>/tags.json
+```
+
+Each tag is added without replacing existing tags. All supported operations add
+`SQL Request`; replace-blob requests additionally add `BLOB Update`.
 
 ## OAuth Setup
 

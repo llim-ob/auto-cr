@@ -79,6 +79,17 @@ def teamwork_get(path: str) -> dict:
     return payload
 
 
+def teamwork_add_tag(task_id: str, tag_name: str) -> None:
+    """Add one tag to a Teamwork task without replacing its existing tags."""
+    resp = requests.put(
+        f"{BASE_URL}/tasks/{task_id}/tags.json",
+        headers=get_auth_headers(),
+        json={"tags": {"content": tag_name}},
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+
 def qwen_chat(messages: list[dict]) -> str:
     """Send a chat request to the configured OpenAI-compatible Qwen endpoint."""
     if not QWEN_API_KEY:

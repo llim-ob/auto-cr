@@ -12,13 +12,15 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from tw_auth import QWEN_API_KEY, qwen_chat, teamwork_get
+from tw_auth import QWEN_API_KEY, qwen_chat, teamwork_add_tag, teamwork_get
 
 BASE_DIR = Path(__file__).parent
 TEMPLATE_DIR = BASE_DIR / "template"
 GITHUB_API = "https://api.github.com"
 GITHUB_OWNER = os.getenv("GITHUB_OWNER", "objectbrightph")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "sql-requests")
+SQL_REQUEST_TAG = "SQL Request"
+BLOB_UPDATE_TAG = "BLOB Update"
 
 
 def parse_teamwork_link(link: str) -> dict[str, str]:
@@ -266,6 +268,7 @@ def analyze_task_hardcoded(task: dict) -> dict:
     title_text = task["title"].lower()
     description = task["description"]
     description_text = description.lower()
+    source_text = f"{task['title']}\n{description}"
     has_rename_pair = bool(task["rename_from"] and task["rename_to"])
     title_pair = extract_rename_pair(task["title"])
     description_pair = extract_rename_pair(description)
@@ -295,10 +298,18 @@ def analyze_task_hardcoded(task: dict) -> dict:
     else:
         operation = "reload"
 
+    replace_blob_request = operation == "reload" and bool(
+        re.search(r"\breplace[\s-]+blob\b", source_text, re.IGNORECASE)
+    )
+
     return {
         "operation": operation,
         "rename_to": task["rename_to"] if operation == "rename" else "",
-        "request_details": "For Reload" if operation == "reload" else "",
+        "request_details": (
+            "For Reload / BLOB Update"
+            if replace_blob_request
+            else "For Reload" if operation == "reload" else ""
+        ),
         "rationale": "Matched local COMREC operation rules.",
         "analyzer": "hardcoded",
     }
@@ -376,10 +387,17 @@ def analyze_task(task: dict, operation: str | None = None) -> dict:
         raise RuntimeError("Qwen classified task as rename but returned no destination filename")
     if operation != "rename":
         rename_to = ""
+    replace_blob_request = operation == "reload" and bool(
+        re.search(r"\breplace[\s-]+blob\b", f"{task['title']}\n{task['description']}", re.IGNORECASE)
+    )
     return {
         "operation": operation,
         "rename_to": rename_to,
-        "request_details": "For Reload" if operation == "reload" else "",
+        "request_details": (
+            "For Reload / BLOB Update"
+            if replace_blob_request
+            else "For Reload" if operation == "reload" else ""
+        ),
         "rationale": str(result.get("rationale") or ""),
         "analyzer": "qwen",
     }
@@ -519,6 +537,16 @@ def validate_task(task: dict, analysis: dict) -> dict:
     return task
 
 
+def add_teamwork_tags(task: dict) -> None:
+    """Tag the source Teamwork task according to the selected operation."""
+    tags = [SQL_REQUEST_TAG]
+    if task["request_details"] == "For Reload / BLOB Update":
+        tags.append(BLOB_UPDATE_TAG)
+
+    for tag in tags:
+        teamwork_add_tag(task["task_id"], tag)
+
+
 def choose_delete_mode() -> str:
     while True:
         choice = input("Delete mode: choose 1 (delete1.txt) or 2 (delete2.txt): ").strip()
@@ -634,6 +662,7 @@ def main() -> int:
         task = validate_task(task, analysis)
         task = append_database_file_extension(task)
         request_text = render_reference_template(task)
+        add_teamwork_tags(task)
         print(f"Operation: {task['operation']}")
         print(f"Analyzer: {task['analyzer']}")
         print(f"Analysis rationale: {task['rationale']}")

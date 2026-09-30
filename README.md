@@ -1,6 +1,6 @@
-# auto-cr
+# sql-pasuyo
 
-`auto-cr` converts a Teamwork task link into a GitHub issue containing the SQL and operational instructions for a COMREC request.
+`sql-pasuyo` converts a Teamwork task link into a GitHub issue containing the SQL and operational instructions for a COMREC request.
 
 It reads the Teamwork task, determines whether the request is a reload, replace-blob, rename, or delete operation, fills the matching local template, adds the appropriate tags to the Teamwork task, and creates one issue in the configured GitHub repository.
 

@@ -15,7 +15,7 @@ GitHub issue.
 From the project directory:
 
 ```bash
-cd /Users/liamrhysslim/Codes/auto-cr
+cd /Users/{your_folder}/Codes/sql-pasuyo
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
@@ -28,21 +28,21 @@ Create `.env` in the project directory:
 
 ```dotenv
 # GitHub issue destination
-GITHUB_TOKEN=your_github_token
+GITHUB_TOKEN=your_github_token # REQUIRED
 GITHUB_OWNER=objectbrightph
 GITHUB_REPO=sql-requests
 GITHUB_LABEL=sql-request
 
 # Teamwork authentication: use either API key or OAuth access token
-TW_API_KEY=your_teamwork_api_key
+TW_API_KEY=your_teamwork_api_key # REQUIRED
 # TW_ACCESS_TOKEN=your_teamwork_access_token
 
-# Optional Qwen task classification
+# Optional AI task classification
 # QWEN_API_KEY=your_qwen_api_key
 # QWEN_API_BASE=
 # QWEN_MODEL=
 
-# Read-only Oracle filename lookup for rename requests
+# Read-only Oracle fileid lookup for table_name
 DB_CONNECTION=oracle
 DB_DATABASE=database
 DB_HOST=dbhost
@@ -118,8 +118,9 @@ The script also reads `feedId`, `adapterId`, and `fileIds` when those values are
 
 ### 4. Submit the Teamwork link
 
-From Finder, drag the Teamwork task link onto the executable `paste-tw` file inside
-the `auto-cr` folder. macOS may pass the dropped link as a `.webloc` file;
+Use the executable `paste-tw` to submit the Teamwork task link. From Finder, drag the
+Teamwork task link onto `paste-tw` inside
+the `sql-pasuyo` folder. macOS may pass the dropped link as a `.webloc` file;
 the launcher reads its URL automatically.
 
 You can also double-click `paste-tw`, then paste the Teamwork link when prompted. After
@@ -136,27 +137,19 @@ Paste Teamwork task link (Ctrl-D to quit):
 Press `Ctrl-D` at the prompt to close the session. Command-line launches with
 an explicit URL still run once and exit.
 
-Command-line usage remains supported:
-
-Run `auto.py` with the Teamwork task URL:
+From a terminal, run `paste-tw` with the Teamwork task URL:
 
 ```bash
-.venv/bin/python auto.py \
+./paste-tw \
   "https://objectbright.teamwork.com/app/tasks/27255838"
-```
-
-You can also use the `a` launcher from the project directory:
-
-```bash
-./a "https://objectbright.teamwork.com/app/tasks/27255838"
 ```
 
 Force an operation with a flag when the request wording is already known:
 
 ```bash
-.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --reload
-.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --delete
-.venv/bin/python auto.py "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --reload
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --delete
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob
 ```
 
 `--replace-blob` uses the existing reload template. `--rename` is also
@@ -168,13 +161,13 @@ If no operation flag is provided, the script fetches and analyzes the Teamwork
 task using Qwen when configured, or local rules otherwise:
 
 ```bash
-.venv/bin/python auto.py \
+./paste-tw \
   "https://objectbright.teamwork.com/app/tasks/27261684"
 ```
 
-The same flags can be passed through `paste-tw` or `./a` when launching from a
-terminal. A dropped `.webloc` contains only the link, so it follows the
-analysis path unless an operation flag is added to the launcher command.
+The same flags can be passed through `paste-tw` when launching from a terminal. A
+dropped `.webloc` contains only the link, so it follows the analysis path unless an
+operation flag is added to the launcher command.
 
 For reload, replace-blob, delete, and rename requests, the script adds the
 `SQL Request` tag to the Teamwork task. Replace-blob requests (selected with
@@ -212,7 +205,7 @@ Issue created: https://github.com/objectbrightph/sql-requests/issues/123
 ## Teamwork Link To GitHub Issue Flow
 
 ```text
-Paste Teamwork task link into auto.py
+Paste Teamwork task link into paste-tw
                  |
                  v
 Extract numeric Teamwork task ID
@@ -414,5 +407,5 @@ Use the project virtual environment directly:
 
 ```bash
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python auto.py "<teamwork-task-link>"
+./paste-tw "<teamwork-task-link>"
 ```

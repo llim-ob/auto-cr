@@ -254,17 +254,26 @@ The script supports Teamwork API-key authentication with `TW_API_KEY` and OAuth 
 
 ### 3. Extract task data
 
-The title and description are normalized, then the script extracts:
+The title and description are normalized, then the script extracts values from
+the task API fields, matching custom fields, and task text. If either ID is
+not present in the main task response, `auto.py` also reads the task's
+Teamwork custom-field endpoint so custom-field values with names such as
+`Feed ID` and `Adapter ID` can be matched.
 
 | Value | Supported examples |
 | --- | --- |
-| Feed ID | `Feed ID: 396` |
-| Adapter ID | `Adapter ID: 396` |
-| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026` |
+| Feed ID | API `feedId`, a custom field named `Feed ID`, `Feed ID: 396`, or `Feed 396` |
+| Adapter ID | API `adapterId`, a custom field named `Adapter ID`, or `Adapter ID: 396` |
+| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026`, or a reload list after `following file id due to Error status.` |
 | Rename source | `From: OLD_FILENAME` |
 | Rename destination | `To: NEW_FILENAME`, or `from OLD_FILENAME to NEW_FILENAME` |
 
 The script stops before creating the issue if feed ID, adapter ID, file ID, or title is missing. Rename operations also require a destination filename and the Oracle read-only filename lookup settings.
+
+Reload requests may also contain a bare list of file IDs, with one numeric ID
+per line, after the error-status sentence. For example, the IDs in
+`Please reload the following file id due to Error status.\n2781420\n2781675`
+are extracted as two file IDs.
 
 ### 4. Classify the operation
 

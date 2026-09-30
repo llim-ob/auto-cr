@@ -48,6 +48,80 @@ def first_value(data: dict, *keys):
     return None
 
 
+def custom_field_id(data: dict, field_names: set[str]) -> str:
+    """Find a numeric ID in a Teamwork custom field by its display name."""
+    normalized_names = {
+        re.sub(r"[^a-z0-9]", "", name.lower()) for name in field_names
+    }
+    label_keys = {"name", "label", "fieldname", "customfieldname", "title"}
+    value_keys = {
+        "value",
+        "valuetext",
+        "displayvalue",
+        "text",
+        "fieldvalue",
+    }
+
+    def numeric_value(value) -> str:
+        if isinstance(value, bool) or value in (None, "", []):
+            return ""
+        if isinstance(value, (dict, list)):
+            return ""
+        match = re.search(r"\b(\d+)\b", str(value))
+        return match.group(1) if match else ""
+
+    def walk(value) -> str:
+        if isinstance(value, dict):
+            labels = {
+                re.sub(r"[^a-z0-9]", "", str(item).lower())
+                for key, item in value.items()
+                if str(key).lower() in label_keys
+            }
+            if labels & normalized_names:
+                for key, item in value.items():
+                    if str(key).lower() in value_keys:
+                        result = numeric_value(item)
+                        if result:
+                            return result
+
+            # Task custom-field values can be shaped as
+            # {"customfield": {"name": "Feed ID"}, "value": "396"}.
+            for key, item in value.items():
+                if str(key).lower() not in {"customfield", "custom_field"}:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                nested_labels = {
+                    re.sub(r"[^a-z0-9]", "", str(label).lower())
+                    for nested_key, label in item.items()
+                    if str(nested_key).lower() in label_keys
+                }
+                if nested_labels & normalized_names:
+                    for parent_key, parent_item in value.items():
+                        if str(parent_key).lower() in value_keys:
+                            result = numeric_value(parent_item)
+                            if result:
+                                return result
+
+            for key, item in value.items():
+                if re.sub(r"[^a-z0-9]", "", str(key).lower()) in normalized_names:
+                    result = numeric_value(item)
+                    if result:
+                        return result
+            for item in value.values():
+                result = walk(item)
+                if result:
+                    return result
+        elif isinstance(value, list):
+            for item in value:
+                result = walk(item)
+                if result:
+                    return result
+        return ""
+
+    return walk(data)
+
+
 def extract_rename_pair(source_text: str) -> tuple[str, str]:
     """Extract old and new filenames from labeled or natural-language text."""
     from_match = re.search(r"From\s*:\s*[\"']?([\w.-]+)", source_text, re.IGNORECASE)
@@ -93,12 +167,16 @@ def extract_task(task_id: str, payload: dict) -> dict:
 
     feed_id = first_value(data, "feedId", "feedID")
     adapter_id = first_value(data, "adapterId", "adapterID")
-    feed_match = re.search(r"Feed\s*ID\s*[:#-]?\s*(\d+)", source_text, re.IGNORECASE)
+    feed_match = re.search(r"Feed(?:\s*ID)?\s*[:#-]?\s*(\d+)", source_text, re.IGNORECASE)
     adapter_match = re.search(r"Adapter\s*ID\s*[:#-]?\s*(\d+)", source_text, re.IGNORECASE)
     if feed_match:
         feed_id = feed_match.group(1)
     if adapter_match:
         adapter_id = adapter_match.group(1)
+    if not feed_id:
+        feed_id = custom_field_id(data, {"feed id", "feedid"})
+    if not adapter_id:
+        adapter_id = custom_field_id(data, {"adapter id", "adapterid"})
 
     raw_file_ids = first_value(data, "fileIds", "fileIDs") or []
     if isinstance(raw_file_ids, (str, int)):
@@ -122,6 +200,19 @@ def extract_task(task_id: str, payload: dict) -> dict:
     file_ids.extend(
         re.findall(r"\bfor\s+(\d+)\b", source_text, re.IGNORECASE)
     )
+    # Reload requests may list one file ID per line without repeating the
+    # "File ID" label, for example: "reload the following file id due to
+    # Error status. 2781420 2781675 ...".  `text_value` normalizes line
+    # breaks, so extract the contiguous numeric block after the status text.
+    reload_list_match = re.search(
+        r"\b(?:reload|reprocess|retry|re-run|rerun)\b.*?"
+        r"\bfollowing\s+file\s+ids?\b.*?\bstatus\b[^0-9]*"
+        r"((?:\d+\s*)+)",
+        source_text,
+        re.IGNORECASE,
+    )
+    if reload_list_match:
+        file_ids.extend(re.findall(r"\d+", reload_list_match.group(1)))
 
     rename_from, rename_to = extract_rename_pair(source_text)
 
@@ -139,10 +230,35 @@ def extract_task(task_id: str, payload: dict) -> dict:
 
 def fetch_task(task_id: str) -> dict:
     """Fetch task data directly through the Teamwork API, without browser login."""
-    return extract_task(
-        task_id,
-        teamwork_get(f"/projects/api/v3/tasks/{task_id}.json"),
+    payload = teamwork_get(f"/projects/api/v3/tasks/{task_id}.json")
+    task = extract_task(task_id, payload)
+    if task["feed_id"] and task["adapter_id"]:
+        return task
+
+    # Teamwork's task endpoint may return custom-field values only as IDs. The
+    # task custom-fields endpoint can include the field names, allowing us to
+    # distinguish the Feed ID and Adapter ID values.
+    custom_fields_payload = teamwork_get(
+        f"/projects/api/v3/tasks/{task_id}/customfields.json?fields[customfields]=name"
     )
+    data = payload.get("task", payload)
+    if isinstance(data, dict):
+        enriched_payload = dict(payload)
+        enriched_data = dict(data)
+        custom_fields = custom_fields_payload.get("customfieldTasks", [])
+        if custom_fields:
+            existing = enriched_data.get("customFields", [])
+            if isinstance(existing, dict):
+                existing = [existing]
+            elif not isinstance(existing, list):
+                existing = []
+            enriched_data["customFields"] = [*existing, *custom_fields]
+        if "task" in payload:
+            enriched_payload["task"] = enriched_data
+        else:
+            enriched_payload = enriched_data
+        return extract_task(task_id, enriched_payload)
+    return task
 
 
 def analyze_task_hardcoded(task: dict) -> dict:

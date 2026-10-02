@@ -4,7 +4,7 @@ Feedid: {feed_id}
 Adapter: {adapter_id}
 
 --create a new table for detail table backup and insert the data for backup
-CREATE TABLE ecs_detail_type{adapter_id}_deleted AS (SELECT * FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids}));
+CREATE TABLE {detail_table}_deleted AS (SELECT * FROM {detail_table} WHERE fileid IN ({fileids}));
 
 --insert the data in ecs_header_deleted for backup
 INSERT INTO ecs_header_deleted (SELECT * FROM ecs_header WHERE fileid IN ({fileids}));
@@ -14,7 +14,7 @@ INSERT INTO carrier_file_workflow_deleted (SELECT * FROM carrier_file_workflow W
 
 DELETE FROM ecs_header WHERE fileid IN ({fileids});
 
-DELETE FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids});
+DELETE FROM {detail_table} WHERE fileid IN ({fileids});
 
 DELETE FROM carrier_file_workflow WHERE fileid IN ({fileids});
 commit;

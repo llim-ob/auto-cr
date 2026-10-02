@@ -5,7 +5,7 @@ Adapter: {adapter_id}
 
 DELETE FROM ecs_header WHERE fileid IN ({fileids});
 
-DELETE FROM ecs_detail_type{adapter_id} WHERE fileid IN ({fileids});
+DELETE FROM {detail_table} WHERE fileid IN ({fileids});
 
 UPDATE carrier_file_workflow SET filename='{filename}', processdate = '', processstatus = '',is_export='' WHERE fileid IN ({fileids});
 commit;

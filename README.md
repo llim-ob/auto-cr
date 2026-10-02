@@ -115,6 +115,9 @@ The script initializes `python-oracledb` Thick mode before the read-only lookup.
 It stops with a configuration error if the client libraries cannot be loaded.
 
 The script also reads `feedId`, `adapterId`, and `fileIds` when those values are present in the Teamwork API response.
+Before creating the issue, it prints the detail table derived from the adapter ID directly below the extracted File IDs.
+Adapters below 600 use `ecs_detail_type<adapterId>`; adapters 600 and above use
+`eps_detail_type_<adapterId>`.
 
 ### 4. Submit the Teamwork link
 
@@ -150,12 +153,21 @@ Force an operation with a flag when the request wording is already known:
 ./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --reload
 ./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --delete
 ./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --reload --fileid 2756788
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob --fileid 2756788
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --reload --2756788
+./paste-tw "https://objectbright.teamwork.com/app/tasks/27261684" --replace-blob --2756788
 ```
 
 `--replace-blob` uses the existing reload template. `--rename` is also
 available for an explicit filename-change request. The equivalent generic form
 is `--operation reload`, `--operation delete`, `--operation rename`, or
-`--operation replace-blob`.
+`--operation replace-blob`. Use `--fileid FILE_ID` with `--reload` or
+`--replace-blob` when the file ID should be supplied explicitly; it replaces
+any file IDs extracted from the Teamwork task. The shorthand `--FILE_ID` is
+also supported immediately after the operation flag, for example
+`--reload --2756788` or `--replace-blob --2756788`. With the generic form,
+use `--operation reload --2756788`.
 
 If no operation flag is provided, the script fetches and analyzes the Teamwork
 task using Qwen when configured, or local rules otherwise:
@@ -266,7 +278,7 @@ Teamwork custom-field endpoint so custom-field values with names such as
 | --- | --- |
 | Feed ID | API `feedId`, a custom field named `Feed ID`, `Feed ID: 396`, or `Feed 396` |
 | Adapter ID | API `adapterId`, a custom field named `Adapter ID`, or `Adapter ID: 396` |
-| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026`, or a reload list after `following file id due to Error status.` |
+| File ID | `File ID: 2756788`, `FileID 2756788`, `File #2756788`, `File (2756788)`, `File 2756788`, `blob for 2756788`, `for 2756788`, `2780005 - 09/23/2026`, `Please check files: 123213 1232131 81293 123123`, `Please check files: 123213, 1232131`, or a reload list after `following file id due to Error status.` |
 | Rename source | `From: OLD_FILENAME` |
 | Rename destination | `To: NEW_FILENAME`, or `from OLD_FILENAME to NEW_FILENAME` |
 
@@ -276,6 +288,8 @@ Reload requests may also contain a bare list of file IDs, with one numeric ID
 per line, after the error-status sentence. For example, the IDs in
 `Please reload the following file id due to Error status.\n2781420\n2781675`
 are extracted as two file IDs.
+Requests beginning with `check files` may list multiple IDs separated by
+spaces or commas; both separators are supported.
 
 ### 4. Classify the operation
 

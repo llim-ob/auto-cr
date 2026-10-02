@@ -23,6 +23,14 @@ SQL_REQUEST_TAG = "SQL Request"
 BLOB_UPDATE_TAG = "BLOB Update"
 
 
+def detail_table_name(adapter_id: str) -> str:
+    """Return the detail table name for an adapter ID."""
+    adapter_number = int(adapter_id)
+    if adapter_number >= 600:
+        return f"eps_detail_type_{adapter_number}"
+    return f"ecs_detail_type{adapter_number}"
+
+
 def parse_teamwork_link(link: str) -> dict[str, str]:
     match = re.search(r"/tasks/(\d+)(?:[/?#]|$)", link)
     if not match:
@@ -202,6 +210,16 @@ def extract_task(task_id: str, payload: dict) -> dict:
     file_ids.extend(
         re.findall(r"\bfor\s+(\d+)\b", source_text, re.IGNORECASE)
     )
+    # Some tasks use a short request such as "Please check files: 123, 456"
+    # or separate the file IDs with spaces instead of commas.
+    check_files_match = re.search(
+        r"\bcheck\s+files?\s*(?::\s*)?"
+        r"(\d+(?:(?:\s*,\s*|\s+)\d+)*)\b",
+        source_text,
+        re.IGNORECASE,
+    )
+    if check_files_match:
+        file_ids.extend(re.findall(r"\d+", check_files_match.group(1)))
     # Reload requests may list one file ID per line without repeating the
     # "File ID" label, for example: "reload the following file id due to
     # Error status. 2781420 2781675 ...".  `text_value` normalizes line
@@ -264,7 +282,7 @@ def fetch_task(task_id: str) -> dict:
 
 
 def analyze_task_hardcoded(task: dict) -> dict:
-    """Classify supported operations without an external model."""
+    """Classify supported s without an external model."""
     title_text = task["title"].lower()
     description = task["description"]
     description_text = description.lower()
@@ -563,6 +581,7 @@ def render_reference_template(task: dict) -> str:
     replacements = {
         "{feed_id}": task["feed_id"],
         "{adapter_id}": task["adapter_id"],
+        "{detail_table}": detail_table_name(task["adapter_id"]),
         "{fileids}": ",".join(task["file_ids"]),
         "{filename}": task["rename_to"],
         "{request_details}": task.get("request_details", "For Reload"),
@@ -619,6 +638,12 @@ def create_github_issue(task: dict, request_text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a GitHub issue from a Teamwork COMREC task")
     parser.add_argument("teamwork_link", help="Teamwork task URL")
+    parser.add_argument(
+        "--fileid",
+        dest="file_id",
+        metavar="FILE_ID",
+        help="Use this file ID for reload or replace-blob requests",
+    )
     operation_group = parser.add_mutually_exclusive_group()
     operation_group.add_argument(
         "--operation",
@@ -655,9 +680,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.file_id:
+        if args.operation not in {"reload", "replace-blob"}:
+            parser.error("--fileid can only be used with --reload or --replace-blob")
+        if not args.file_id.isdigit() or int(args.file_id) <= 0:
+            parser.error("--fileid must be a positive integer")
+
     try:
         task = {**parse_teamwork_link(args.teamwork_link)}
         task.update(fetch_task(task["task_id"]))
+        if args.file_id:
+            task["file_ids"] = [args.file_id]
         analysis = analyze_task(task, args.operation)
         task = validate_task(task, analysis)
         task = append_database_file_extension(task)
@@ -669,6 +702,7 @@ def main() -> int:
         print(f"Feed ID: {task['feed_id']}")
         print(f"Adapter ID: {task['adapter_id']}")
         print(f"File IDs: {', '.join(task['file_ids'])}")
+        print(f"Table: {detail_table_name(task['adapter_id'])}")
         if task["operation"] == "rename":
             print(f"Rename destination: {task['rename_to']}")
         print(f"")

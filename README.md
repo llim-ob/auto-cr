@@ -42,7 +42,7 @@ TW_API_KEY=your_teamwork_api_key # REQUIRED
 # QWEN_API_BASE=
 # QWEN_MODEL=
 
-# Read-only Oracle fileid lookup for table_name
+# Read-only Oracle lookups for rename filenames and AI-adapter reloads
 DB_CONNECTION=oracle
 DB_DATABASE=database
 DB_HOST=dbhost
@@ -63,13 +63,13 @@ Required values:
 | `GITHUB_REPO` | No | GitHub repository. Defaults to `sql-requests`. |
 | `GITHUB_LABEL` | No | Issue label. Defaults to `sql-request`. |
 | `QWEN_API_KEY` | No | Enables Qwen classification. Without it, local rules are used. |
-| `DB_CONNECTION` | Rename only | Must be `oracle`. |
-| `DB_DATABASE` | Rename only | Oracle service name, such as `database`. |
-| `DB_HOST` | Rename only | host. |
-| `DB_PASSWORD` | Rename only | Oracle read-only lookup password. |
-| `DB_PORT` | Rename only | Oracle listener port, normally port. |
-| `DB_USERNAME` | Rename only | Oracle lookup username. |
-| `DB_ORACLE_CLIENT_LIB` | Rename only | Directory containing the Oracle Instant Client libraries, such as `libclntsh.dylib`. Required for the older AIMSPRD server. |
+| `DB_CONNECTION` | Rename or reload | Must be `oracle` when a rename or reload is processed. |
+| `DB_DATABASE` | Rename or reload | Oracle service name, such as `database`. |
+| `DB_HOST` | Rename or reload | Oracle database host. |
+| `DB_PASSWORD` | Rename or reload | Oracle read-only lookup password. |
+| `DB_PORT` | Rename or reload | Oracle listener port, normally `1521`. |
+| `DB_USERNAME` | Rename or reload | Oracle lookup username. |
+| `DB_ORACLE_CLIENT_LIB` | Rename or reload | Directory containing the Oracle Instant Client libraries, such as `libclntsh.dylib`. Required for the older AIMSPRD server. |
 
 Keep `.env` private. Never commit API keys or tokens.
 
@@ -118,6 +118,14 @@ The script also reads `feedId`, `adapterId`, and `fileIds` when those values are
 Before creating the issue, it prints the detail table derived from the adapter ID directly below the extracted File IDs.
 Adapters below 600 use `ecs_detail_type<adapterId>`; adapters 600 and above use
 `eps_detail_type_<adapterId>`.
+
+For reload requests, the script also performs a read-only lookup in
+`carrier_feed_control` using the extracted feed ID. It examines Python
+commandlines such as `python :5foldername/AI_script.py`; when the script
+basename contains `AI_`, the file IDs are treated as AI adapters and the
+request uses `template/ai_reload.txt`. Other reloads continue to use
+`template/reload.txt`. If no matching AI commandline is found, the standard
+reload template is used.
 
 ### 4. Submit the Teamwork link
 
@@ -237,10 +245,13 @@ Use explicit operation flag, or analyze task: reload, replace-blob, rename, or d
                  +--> delete: ask for template mode 1 or 2
                  |
                  v
-Add Teamwork tags: SQL Request, and BLOB Update for replace-blob
+For reload: inspect carrier_feed_control commandline for an AI_ Python script
                  |
                  v
 Load and fill operation template from template/
+                 |
+                 v
+Add Teamwork tags: SQL Request, and BLOB Update for replace-blob
                  |
                  v
 Insert rendered request into sql_request.txt
@@ -315,6 +326,7 @@ Operation templates are stored in `template/`:
 | Operation | Template |
 | --- | --- |
 | Reload | `template/reload.txt` |
+| AI adapter reload | `template/ai_reload.txt` when `carrier_feed_control.commandline` contains a Python script with `AI_` in its basename |
 | Rename | `template/rename.txt` |
 | Delete mode 1 | `template/delete1.txt` |
 | Delete mode 2 | `template/delete2.txt` |
@@ -330,6 +342,11 @@ The selected template is filled with:
 
 Plain reload requests use `Request Details: For Reload`. `--replace-blob`
 requests use `Request Details: For Reload / BLOB Update`.
+
+Reload classification requires the read-only Oracle lookup described above so
+that AI adapter reloads can be distinguished from normal reloads. The lookup
+uses the feed ID, selects Python commandlines from `carrier_feed_control`, and
+does not update, delete, commit, or otherwise modify the production database.
 
 The templates contain the SQL and any required shell commands or verification queries. Those instructions are included as text in the GitHub issue; they are not executed by `auto.py`.
 

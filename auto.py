@@ -245,6 +245,7 @@ def extract_task(task_id: str, payload: dict) -> dict:
         "file_ids": list(dict.fromkeys(file_ids)),
         "rename_from": rename_from,
         "rename_to": rename_to,
+        "is_ai_adapter": False,
     }
 
 
@@ -535,6 +536,122 @@ def append_database_file_extension(task: dict) -> dict:
     return task
 
 
+def commandline_uses_ai_adapter(commandline) -> bool:
+    """Return whether a Python command runs an AI adapter script."""
+    commandline = str(commandline or "")
+    python_match = re.search(r"\bpython(?:\d+(?:\.\d+)?)?\b", commandline, re.IGNORECASE)
+    if not python_match:
+        return False
+
+    # The commandline format uses paths such as :5foldername/AI_script.py.
+    # Inspect each argument after Python and only match AI_ in the script's
+    # basename, rather than in an unrelated folder name or argument.
+    arguments = re.findall(r'''(?:[^\s"']+|"[^"]*"|'[^']*')+''', commandline[python_match.end():])
+    for argument in arguments:
+        argument = argument.strip("\"'")
+        if argument.startswith("-"):
+            continue
+        basename = re.split(r"[/\\]", argument)[-1]
+        return "AI_" in basename
+    return False
+
+
+def detect_ai_adapter(task: dict) -> dict:
+    """Use the feed control commandline to identify AI-adapter reloads."""
+    task = dict(task)
+    task["is_ai_adapter"] = False
+    if task["operation"] != "reload":
+        return task
+
+    try:
+        import oracledb
+    except ImportError as exc:
+        raise RuntimeError(
+            "The oracledb package is required to identify AI adapter reloads; "
+            "install requirements.txt"
+        ) from exc
+
+    db_connection = os.getenv("DB_CONNECTION", "oracle").strip().lower()
+    if db_connection != "oracle":
+        raise RuntimeError("DB_CONNECTION must be oracle for AI adapter lookup")
+
+    required = {
+        "DB_DATABASE": os.getenv("DB_DATABASE", "").strip(),
+        "DB_HOST": os.getenv("DB_HOST", "").strip(),
+        "DB_PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "DB_PORT": os.getenv("DB_PORT", "").strip(),
+        "DB_USERNAME": os.getenv("DB_USERNAME", "").strip(),
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "AI adapter lookup requires database settings: " + ", ".join(missing)
+        )
+
+    try:
+        port = int(required["DB_PORT"])
+    except ValueError as exc:
+        raise RuntimeError("DB_PORT must be an integer") from exc
+
+    client_lib = os.getenv("DB_ORACLE_CLIENT_LIB", "").strip()
+    try:
+        if oracledb.is_thin_mode():
+            if client_lib:
+                oracledb.init_oracle_client(lib_dir=client_lib)
+            else:
+                oracledb.init_oracle_client()
+    except oracledb.Error as exc:
+        raise RuntimeError(
+            "AIMSPRD requires python-oracledb Thick mode, but Oracle Instant Client "
+            "could not be loaded. Install Oracle Instant Client and set "
+            "DB_ORACLE_CLIENT_LIB to its directory in .env."
+        ) from exc
+
+    connection = None
+    try:
+        dsn = oracledb.makedsn(
+            required["DB_HOST"],
+            port,
+            service_name=required["DB_DATABASE"],
+        )
+        connection = oracledb.connect(
+            user=required["DB_USERNAME"],
+            password=required["DB_PASSWORD"],
+            dsn=dsn,
+        )
+        with connection.cursor() as cursor:
+            try:
+                feed_id = int(task["feed_id"])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Invalid feed ID for AI adapter lookup: {task['feed_id']}"
+                ) from exc
+
+            # Fetch the feed's Python commandlines, then inspect the script
+            # basename for the AI_ marker. No database data is modified.
+            cursor.execute(
+                """
+                SELECT commandline
+                FROM carrier_feed_control
+                WHERE feedid = :feed_id
+                  AND LOWER(commandline) LIKE '%python%'
+                """,
+                feed_id=feed_id,
+            )
+            task["is_ai_adapter"] = any(
+                commandline_uses_ai_adapter(row[0])
+                for row in cursor.fetchall()
+                if row
+            )
+    except oracledb.Error as exc:
+        raise RuntimeError(f"Read-only Oracle AI adapter lookup failed: {exc}") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+    return task
+
+
 def validate_task(task: dict, analysis: dict) -> dict:
     task = dict(task)
     task.update(analysis)
@@ -577,6 +694,8 @@ def render_reference_template(task: dict) -> str:
     template_name = (
         f"delete{choose_delete_mode()}.txt" if task["operation"] == "delete" else f"{task['operation']}.txt"
     )
+    if task["operation"] == "reload" and task.get("is_ai_adapter", False):
+        template_name = "ai_reload.txt"
     template = (TEMPLATE_DIR / template_name).read_text(encoding="utf-8")
     replacements = {
         "{feed_id}": task["feed_id"],
@@ -694,6 +813,7 @@ def main() -> int:
         analysis = analyze_task(task, args.operation)
         task = validate_task(task, analysis)
         task = append_database_file_extension(task)
+        task = detect_ai_adapter(task)
         request_text = render_reference_template(task)
         add_teamwork_tags(task)
         print(f"Operation: {task['operation']}")
@@ -702,6 +822,7 @@ def main() -> int:
         print(f"Feed ID: {task['feed_id']}")
         print(f"Adapter ID: {task['adapter_id']}")
         print(f"File IDs: {', '.join(task['file_ids'])}")
+        print(f"AI Adapter: {'yes' if task.get('is_ai_adapter') else 'no'}")
         print(f"Table: {detail_table_name(task['adapter_id'])}")
         if task["operation"] == "rename":
             print(f"Rename destination: {task['rename_to']}")
